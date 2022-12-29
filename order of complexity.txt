@@ -1,0 +1,8 @@
+subway systems, from least to most complex:
+
+kochi
+la
+atlanta
+sf
+dc
+nyc
