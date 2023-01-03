@@ -133,6 +133,7 @@ tobemerged=dict()
 stoptrips=dict()
 servicetrips=dict()
 statidtostationindex=dict()
+statidtochr=dict()
 datetrips=dict()
 deleo=set(trips[trips['route_id'].isin(set(routeinfo[routeinfo['route_type']!=1]['route_id']))]['trip_id'])
 st=st[~st['trip_id'].isin(deleo)]
@@ -155,15 +156,35 @@ stations=[]
 statids=[]
 costat=dict()
 
-bruhmoment=st[st['stop_id']=='nan']
-if len(bruhmoment.index)>0:
-    bruhmoment.to_csv(system+' bruh.txt',index_label=False)
+if 'location_type' in stop.columns:
+    loctypeopt=True
+else:
+    loctypeopt=False
+loctypeset=set()
+temp=set(st['stop_id'])
 
-for i in set(st['stop_id']):
+for i in temp:
     if stopcoord[i] in costat:
         costat[stopcoord[i]].add(i)
     else:
         costat[stopcoord[i]]={i}
+    if loctypeopt:
+        loctype=list(stop[stop['stop_id']==i]['location_type'])[0]
+        if not pd.isna(loctype):
+            loctypeset.add(loctype)
+if loctypeset==set() and loctypeopt:
+    # group by name
+    namegroups=dict()
+    for i in temp:
+        if stoptoname[i] in namegroups:
+            namegroups[stoptoname[i]].add(i)
+        else:
+            namegroups[stoptoname[i]]={i}
+    for i in namegroups:
+        namegroups[i]=sorted(tuple(namegroups[i]))
+        for j in namegroups[i][1:]:
+            tobemerged[j]=namegroups[i][0]
+    print(namegroups)
 
 for i in costat:
     if len(costat[i])>1:
@@ -171,22 +192,26 @@ for i in costat:
         m=tuple(sorted(costat[i]))
         print(m)
         if len(set(stoptoname[j] for j in costat[i]))==1:
-            stations.append(Station(m[0],stoptoname[m[0]]))
-            statids.append(m[0])
+            if m[0] not in tobemerged:
+                stations.append(Station(m[0],stoptoname[m[0]]))
+                statids.append(m[0])
             for j in m[1:]:
                 tobemerged[j]=m[0]
         else:
             for j in m:
-                stations.append(Station(j,stoptoname[j]))
-                statids.append(j)
+                if j not in tobemerged:
+                    stations.append(Station(j,stoptoname[j]))
+                    statids.append(j)
     else:
         s=list(costat[i])[0]
-        stations.append(Station(s,stoptoname[s]))
-        statids.append(s)
+        if s not in tobemerged:
+            stations.append(Station(s,stoptoname[s]))
+            statids.append(s)
 for i in range(len(statids)):
     statidtostationindex[statids[i]]=i
-
+    statidtochr[statids[i]]=chr(i)
 print(tobemerged)
+
 old=list(tobemerged.keys())
 new=[tobemerged[i] for i in old]
 st['stop_id']=st['stop_id'].replace(old,new)
@@ -195,6 +220,7 @@ with open(system+' stations set.txt','w',encoding='utf-8')as f:
 # go down each route, add neighboras being only station in front
 atr=set()
 routetotrips=dict()
+print(len(set(st['stop_id'])))
 print(len(set(st['trip_id'])))
 ct=0
 for trip in set(st['trip_id']):
@@ -301,28 +327,50 @@ print('%s seconds'%(rtrtrt.perf_counter()-bingbingbing))
 # us stored time and date to find what services and routes are available
 
 NUMBEROFSTATIONS=len(stations)
+allworthy=set() # set of station ids which correspond to stations that are worthy of stopping at
+for i in range(NUMBEROFSTATIONS):
+    stationinquestion=stations[i]
+    if stationinquestion.endofroute:
+        allworthy.add(statids[i])
+    elif len(stationinquestion.neighbors)>2:
+        allworthy.add(statids[i])
+    elif len(stationinquestion.transfers)>0:
+        allworthy.add(statids[i])
+# (newstation.endofroute and len(newstation.neighbors)>1) or ((not newstation.endofroute) and len(newstation.neighbors)>2) or (len(newstation.transfers)>0)
+allworthychr={statidtochr[i] for i in allworthy}
 
-def astar_heur(timesincestart, worthyofstopping, prevline, prevworthy, numuni, numstat,stringofthings):
+
+def astar_heur(timesincestart, worthyofstopping, prevline, prevworthy, numuni, numstat, stringofthings):
     g=timesincestart.seconds//60
-    g+=numstat
-    h=NUMBEROFSTATIONS+numuni
+    g+=(numstat-numuni)*2
+    h=NUMBEROFSTATIONS-numuni
     if worthyofstopping:
         h-=5
     if prevline:
-        h-=10
+        h-=20
     if prevworthy:
-        h-=15
+        h-=7
+    curstat,path=stringofthings[0],stringofthings[1:]
+    j=path.find(curstat)
+    if j>=0:
+        if (set(path[:j])&allworthychr)==set():
+            h+=60000
+
     return g+h
+
+# make set of all stations that are worthy of stopping at
+
 
 # could make an algorithm that uses only the average (if applicable) of the times between stations in order to find path - basic version
 # advanced version - define start date and time, 
 from heapq import heappush, heappop
-def dijkstra(start,starttime,startday): #for hueristic add thing for if previous station was a transfer station or smth
+def a_star(start,starttime,startday): #for hueristic add thing for if previous station was a transfer station or smth
     startingdatetime=datetime.datetime.combine(startday,starttime)
-    fringe=[(True,True,0,startingdatetime,not (start.endofroute or (len(start.transfers)>0)),-1,1,chr(statidtostationindex[start.statid]),start,None,tuple())]#'"'+start.statid+'",',start,None)]
+    heur=astar_heur(startingdatetime-startingdatetime,start.endofroute or (len(start.transfers)>0),False,False,1,1,statidtochr[start.statid])
+    fringe=[(heur,-1,startingdatetime,0,True,True,not (start.endofroute or (len(start.transfers)>0)),1,statidtochr[start.statid],start,None,tuple())]#'"'+start.statid+'",',start,None)]
     while len(fringe)>0:
-        plnl,prevworthy,numunistatdiff,timeofday,worthyofstopping,numuni,numstat,stringofthings,curstation,prevline,timetuple=heappop(fringe)
-        # print(numunistatdiff,not prevworthy,not plnl,not worthyofstopping,timeofday,curstation.name,[statids[ord(i)] for i in stringofthings])
+        heuristic,numuni,timeofday,numunistatdiff,plnl,prevworthy,worthyofstopping,numstat,stringofthings,curstation,prevline,timetuple=heappop(fringe)
+        # print(heuristic,numunistatdiff,not prevworthy,not plnl,not worthyofstopping,timeofday,curstation.name,[statids[ord(i)] for i in stringofthings])
         # input()
         if numuni==-len(stations):
             return timeofday,numuni,numstat,stringofthings,curstation,prevline,timetuple
@@ -333,22 +381,23 @@ def dijkstra(start,starttime,startday): #for hueristic add thing for if previous
         for nstat,oldtime,newtime,nextline in childset:
             if len(timetuple)==0:
                 timetuple=(oldtime,)
-            nsot=stringofthings+chr(statidtostationindex[nstat])
+            nsot=statidtochr[nstat]+stringofthings
             newstation=stations[statidtostationindex[nstat]]
-            heappush(fringe,(not (prevline==nextline or prevline==None or worthyofstopping),worthyofstopping,-len(set(nsot))+len(nsot),newtime,not ((newstation.endofroute and len(newstation.neighbors)>1) or ((not newstation.endofroute) and len(newstation.neighbors)>2) or (len(newstation.transfers)>0)),-len(set(nsot)),len(nsot),nsot,stations[statidtostationindex[nstat]],nextline,timetuple+(newtime,)))
+            nheur=astar_heur(newtime-startingdatetime,(newstation.endofroute and len(newstation.neighbors)>1) or ((not newstation.endofroute) and len(newstation.neighbors)>2) or (len(newstation.transfers)>0),prevline==nextline or prevline==None or worthyofstopping,worthyofstopping,len(set(nsot)),len(nsot),nsot)
+            heappush(fringe,(nheur,-len(set(nsot)),newtime,-len(set(nsot))+len(nsot),not (prevline==nextline or prevline==None or worthyofstopping),worthyofstopping,not ((newstation.endofroute and len(newstation.neighbors)>1) or ((not newstation.endofroute) and len(newstation.neighbors)>2) or (len(newstation.transfers)>0)),len(nsot),nsot,stations[statidtostationindex[nstat]],nextline,timetuple+(newtime,)))
 dingdingding=rtrtrt.perf_counter()
 tim='08:00:00'
-dat='2022-12-14'
+dat='2022-12-18'
 # tim='00:00:00'
 # dat='2018-01-01'
 # dat='2022-10-20'
 import cProfile, pstats, io
 profiler = cProfile.Profile()
 profiler.enable()
-startstats={'kochi':'ALVA', 'dc':'STN_N12', 'la': '80201S','nyc':'H11','sf':'place_ANTC'}
+startstats={'kochi':'ALVA', 'dc':'STN_N12', 'la': '80201S','nyc':'H11','sf':'place_ANTC','atlanta':'730'}
 try:
 # if True:
-    solution=dijkstra(stations[statidtostationindex[startstats[system]]],datetime.time.fromisoformat(tim),datetime.date.fromisoformat(dat))
+    solution=a_star(stations[statidtostationindex[startstats[system]]],datetime.time.fromisoformat(tim),datetime.date.fromisoformat(dat))
     print('solution found in %s seconds :)'%(rtrtrt.perf_counter()-dingdingding))
     with open(system+' solution.txt','w',encoding='utf-8') as f:
         f.write('\n'.join([stoptoname[statids[ord(solution[3][i])]]+' ('+statids[ord(solution[3][i])]+') - '+str(solution[6][i]) for i in range(solution[2])]))
