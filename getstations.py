@@ -355,6 +355,8 @@ def astar_heur(timesincestart, worthyofstopping, prevline, prevworthy, numuni, n
     if j>=0:
         if (set(path[:j])&allworthychr)==set():
             h+=60000
+        else:
+            h-=(numstat-numuni)
 
     return g+h
 
