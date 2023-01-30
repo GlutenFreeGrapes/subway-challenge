@@ -339,11 +339,47 @@ for i in range(NUMBEROFSTATIONS):
 # (newstation.endofroute and len(newstation.neighbors)>1) or ((not newstation.endofroute) and len(newstation.neighbors)>2) or (len(newstation.transfers)>0)
 allworthychr={statidtochr[i] for i in allworthy}
 
+# MAKE SOMETHING TO SIMPLIFY NODES AND EDGES
+endstoletter=dict()
+counter=1
+for stationid in allworthy:
+    cstation=stations[statidtostationindex[stationid]]
+    for otherstation in cstation.transfers:
+        endstoletter[(stationid,otherstation.statid,counter)]=set()
+        counter+=1
+    for otherstation in cstation.neighbors:
+        prev=cstation
+        pointer=otherstation
+        visitid={otherstation.statid}
+        visitedrun={cstation,otherstation}
+        while pointer.statid not in allworthy:
+            prev=pointer
+            pointerset=pointer.neighbors-visitedrun
+            pointerset={i for i in pointerset if (len(i.neighbors-visitedrun)>0 or i.statid in allworthy)}
+            if len(pointerset)>1:
+                print({i.statid for i in pointerset})
+            try:
+                pointer=list(pointerset)[0]
+            except:
+                print(stationid,prev.statid,visitid,pointerset)
+            visitid.add(pointer.statid)
+            visitedrun.add(pointer)
+        visitid.remove(pointer.statid)
+        endstoletter[(stationid,pointer.statid,counter)]=visitid#change to like a letter or smth?
+        counter+=1
+with open (system+' simplified nodes.txt','w')as f:
+    f.write('\n'.join([str((stoptoname[i[0]],stoptoname[i[1]],i[2]))+'\t'+str({stoptoname[j] for j in endstoletter[i]}) for i in endstoletter]))
+
+#now, let's build the thing:
+
+
 
 def astar_heur(timesincestart, worthyofstopping, prevline, prevworthy, numuni, numstat, stringofthings):
     g=timesincestart.seconds//60
     g+=(numstat-numuni)*2
     h=NUMBEROFSTATIONS-numuni
+    # prevline gets high until end of route, worthyofstopping gets low, prevworthy gets high
+
     if worthyofstopping:
         h-=5
     if prevline:
