@@ -21,6 +21,17 @@ class Station:
             self.neighbors_id.add(stationid)
             self.neighbors.add(station)
             self.neighbortotrips[stationid]=set()
+class SimpliStation:
+    def __init__(self,basestation):
+        self.statid=basestation.statid
+        self.name=basestation.name
+        self.neighbors=set()
+        self.neighbors_id=set()
+        self.neighbortotrips=dict()
+        self.tripstotime=basestation.tripstotime
+        self.transfers=basestation.transfers
+        self.transfers_id=basestation.transfers_id
+        self.transfertotime=basestation.transfertotime
 oneday=datetime.timedelta(days=1)
 checkpriordaythreshold=datetime.time(6,0,0)
 checknextdaythreshold=datetime.time(18,0,0)
@@ -248,6 +259,7 @@ for trip in atr:
     stations[statidtostationindex[trip[-1]]].endofroute=True
     for j in range(len(trip)-1):
         statindex=statidtostationindex[trip[j]]
+        # if trip[j]!=trip[j+1]: maybe?
         stations[statindex].addneighbor(trip[j+1],stations[statidtostationindex[trip[j+1]]])
         ar=routetotrips[trip]
         stations[statindex].neighbortotrips[trip[j+1]].update(ar)
@@ -341,12 +353,13 @@ allworthychr={statidtochr[i] for i in allworthy}
 
 # MAKE SOMETHING TO SIMPLIFY NODES AND EDGES
 endstoletter=dict()
+lettertoskipped=dict()
 counter=1
 for stationid in allworthy:
     cstation=stations[statidtostationindex[stationid]]
-    for otherstation in cstation.transfers:
-        endstoletter[(stationid,otherstation.statid,counter)]=set()
-        counter+=1
+    # for otherstation in cstation.transfers:
+    #     endstoletter[(stationid,otherstation.statid,counter)]=set()
+    #     counter+=1
     for otherstation in cstation.neighbors:
         prev=cstation
         pointer=otherstation
@@ -356,21 +369,52 @@ for stationid in allworthy:
             prev=pointer
             pointerset=pointer.neighbors-visitedrun
             pointerset={i for i in pointerset if (len(i.neighbors-visitedrun)>0 or i.statid in allworthy)}
-            if len(pointerset)>1:
-                print({i.statid for i in pointerset})
-            try:
-                pointer=list(pointerset)[0]
-            except:
-                print(stationid,prev.statid,visitid,pointerset)
+            pointer=list(pointerset)[0]
             visitid.add(pointer.statid)
             visitedrun.add(pointer)
         visitid.remove(pointer.statid)
-        endstoletter[(stationid,pointer.statid,counter)]=visitid#change to like a letter or smth?
+        endstoletter[(stationid,pointer.statid,counter)]=chr(counter)#change to like a letter or smth?
+        lettertoskipped[chr(counter)]=visitid
         counter+=1
-with open (system+' simplified nodes.txt','w')as f:
-    f.write('\n'.join([str((stoptoname[i[0]],stoptoname[i[1]],i[2]))+'\t'+str({stoptoname[j] for j in endstoletter[i]}) for i in endstoletter]))
-
+with open (system+' simplified nodes.txt','w',encoding='utf-8')as f:
+    f.write('\n'.join([str((stoptoname[i[0]],stoptoname[i[1]],i[2]))+'\t'+endstoletter[i]+'\t'+str({stoptoname[j] for j in lettertoskipped[endstoletter[i]]}) for i in endstoletter]))
+endsworthykeys={j:{i for i in endstoletter if i[0]==j} for j in allworthy}
+print(len(allworthy))
+print(len(set(i[0] for i in endstoletter)))
+print(len(set(i[1] for i in endstoletter)))
+print(counter-1)
 #now, let's build the thing:
+# for i in allworthy:
+#     stat=stations[statidtostationindex[i]]
+#     for j in stat.neighbors:
+#         print(stat.name,j.name)
+#         for k in j.neighbors:
+#             print(k.name)
+#             print(len(stat.neighbortotrips[j.statid]),len(j.neighbortotrips[k.statid]),len(stat.neighbortotrips[j.statid]&j.neighbortotrips[k.statid]))
+simplistations=[]
+statidtosimplistationindex={}
+for n,i in enumerate(allworthy):
+    ostation=stations[statidtostationindex[i]]
+    statidtosimplistationindex[i]=n
+    currentstation=SimpliStation(ostation)
+    for j in endsworthykeys[i]:
+        currentstation.neighbors_id.add(j[1:])
+        direction=lettertoskipped[endstoletter[j]]&ostation.neighbors_id
+        if len(direction)>1:
+            print(currentstation.name,stoptoname[j[1]],{stoptoname[k] for k in direction})
+        if len(direction)==0:
+            currentstation.neighborstotrips=ostation.neighbortotrips[j[1]]
+        else:
+            currentstation.neighborstotrips=ostation.neighbortotrips[list(direction)[0]]
+    simplistations.append(currentstation)
+for i in simplistations:
+    i.neighbors={(simplistations[statidtosimplistationindex[j[0]]],j[1]) for j in i.neighbors_id}
+ckckck=sorted([(simplistations[i].statid,simplistations[i].name,simplistations[i].neighbors_id,simplistations[i].transfertotime) for i in range(len(simplistations))])
+with open(system+' simplified neighbors.txt','w',encoding='utf-8') as f:
+    f.write('\n'.join([' '.join([str(j) for j in i]) for i in ckckck]))
+
+
+
 
 
 
