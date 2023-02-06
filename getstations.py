@@ -12,7 +12,7 @@ class Station:
         self.neighbors_id=set()
         self.neighbortotrips=dict()
         self.tripstotime=dict()
-        self.endofroute=False
+        self.endofroute=set()
         self.transfers=set()
         self.transfers_id=set()
         self.transfertotime=dict()
@@ -28,7 +28,7 @@ class SimpliStation:
         self.neighbors=set()
         self.neighbors_id=set()
         self.neighbortotrips=dict()
-        self.tripstotime=basestation.tripstotime
+        self.tripstotime=dict()
         self.transfers=basestation.transfers
         self.transfers_id=basestation.transfers_id
         self.transfertotime=basestation.transfertotime
@@ -37,6 +37,8 @@ checkpriordaythreshold=datetime.time(6,0,0)
 checknextdaythreshold=datetime.time(18,0,0)
 midnight=datetime.time(0,0,0)
 def getchildren(station, time, day):
+    # CHECK IF ENDOFROUTE FOR STATION INTERSECTS WITH DATETRIPS
+
     # day will be a Date object
     # time will be a Time object
     children=set()
@@ -45,6 +47,7 @@ def getchildren(station, time, day):
         midnightday=datetime.datetime.combine(day,midnight)
         least=aftertime+oneday
         ltuple=tuple()
+        # print(station.neighbortotrips.keys())
         available=station.neighbortotrips[n]&datetrips[day]
         for i in available:
             # maybe make base datetime thing, use timedelta to add seconds to the thing?
@@ -52,7 +55,7 @@ def getchildren(station, time, day):
             td=midnightday+s[0]
             if least>td>=aftertime:
                 least=td
-                ltuple=(n,td,midnightday+s[1],i)
+                ltuple=(n[0],n[1],td,midnightday+s[1],i)
         # pr={(datetime.datetime.combine(day,midnight)+station.tripstotime[(n,i)],i) for i in available if datetime.datetime.combine(day,midnight)+station.tripstotime[(n,i)]}
 
         if time<=checkpriordaythreshold: # if time is so early that potentially the previous day also has a route
@@ -62,7 +65,7 @@ def getchildren(station, time, day):
                 td=midnightday-oneday+s[0]
                 if least>td>=aftertime:
                     least=td
-                    ltuple=(n,td,midnightday-oneday+s[1],i)
+                    ltuple=(n[0],n[1],td,midnightday-oneday+s[1],i)
             
 
         if checknextdaythreshold<=time: # if time is so late that potentially the next day also has a route
@@ -72,7 +75,7 @@ def getchildren(station, time, day):
                 td=midnightday+oneday+s[0]
                 if least>td>=aftertime:
                     least=td
-                    ltuple=(n,td,midnightday+oneday+s[1],i)
+                    ltuple=(n[0],n[1],td,midnightday+oneday+s[1],i)
 
         # qual={i for i in pr if aftertime<=i[0]} # maybe change so qual is not needed 
         # if qual!=pr:
@@ -94,7 +97,7 @@ def getchildren(station, time, day):
             children.add(ltuple)
         # input(sel)
     for n in station.transfertotime:
-        children.add((n,aftertime,aftertime+station.transfertotime[n],None))
+        children.add((n,-1,aftertime,aftertime+station.transfertotime[n],None))
     # input(children)
 
     #station is a Station object
@@ -255,13 +258,14 @@ with open(system+' atr.txt','w') as f:
 print(len(atr))
 
 for trip in atr:
-    stations[statidtostationindex[trip[0]]].endofroute=True
-    stations[statidtostationindex[trip[-1]]].endofroute=True
+    # change this to be dependent on date?
+    ar=routetotrips[trip]
+    stations[statidtostationindex[trip[0]]].endofroute.update(ar)
+    stations[statidtostationindex[trip[-1]]].endofroute.update(ar)
     for j in range(len(trip)-1):
         statindex=statidtostationindex[trip[j]]
         # if trip[j]!=trip[j+1]: maybe?
         stations[statindex].addneighbor(trip[j+1],stations[statidtostationindex[trip[j+1]]])
-        ar=routetotrips[trip]
         stations[statindex].neighbortotrips[trip[j+1]].update(ar)
         for k in ar:
             s,ss=stoptrips[k][j],stoptrips[k][j+1]# ARRIVAL TIME OF FIRST, ARRIVAL OF SECOND
@@ -278,7 +282,7 @@ if anytransfers:
             stations[statindex].transfers_id.add(tostatid)
             stations[statindex].transfertotime[tostatid]=datetime.timedelta(seconds=int(transfersubset.loc[j,'min_transfer_time']))
 
-ckckck=sorted([(statids[i],stations[i].name,stations[i].neighbors_id,stations[i].transfertotime,stations[i].endofroute) for i in range(len(statids))])
+ckckck=sorted([(statids[i],stations[i].name,stations[i].neighbors_id,stations[i].transfertotime,len(stations[i].endofroute)) for i in range(len(statids))])
 with open(system+' neighbors.txt','w',encoding='utf-8') as f:
     f.write('\n'.join([' '.join([str(j) for j in i]) for i in ckckck]))
 # start alg with finding what day of the week it is, then finding what trips are available
@@ -325,64 +329,153 @@ if 'calendar_dates.txt' in curdir:
         if i not in servicetrips:
             servicetrips[i]=set()
 for i in datetoservices:
+    datetoservices[i]=tuple(sorted(datetoservices[i]))
     datetrips[i]=set()
     for j in datetoservices[i]:
         datetrips[i].update(servicetrips[j])
+
 with open(system+' datetoservice.txt','w') as f:
     f.write('\n'.join(sorted([' '.join((str(i),str(datetoservices[i]))) for i in datetoservices])))
 # with open(system+' datetrips.txt','w') as f:
 #     f.write('\n'.join(sorted([' '.join((str(i),str(datetrips[i]))) for i in datetrips])))
-
-print('%s seconds'%(rtrtrt.perf_counter()-bingbingbing))
+cingcingcing=rtrtrt.perf_counter()
+print('%s seconds'%(cingcingcing-bingbingbing))
 
 # time, number of unique stations visited in fringe
 # us stored time and date to find what services and routes are available
 
 NUMBEROFSTATIONS=len(stations)
-allworthy=set() # set of station ids which correspond to stations that are worthy of stopping at
-for i in range(NUMBEROFSTATIONS):
-    stationinquestion=stations[i]
-    if stationinquestion.endofroute:
-        allworthy.add(statids[i])
-    elif len(stationinquestion.neighbors)>2:
-        allworthy.add(statids[i])
-    elif len(stationinquestion.transfers)>0:
-        allworthy.add(statids[i])
-# (newstation.endofroute and len(newstation.neighbors)>1) or ((not newstation.endofroute) and len(newstation.neighbors)>2) or (len(newstation.transfers)>0)
-allworthychr={statidtochr[i] for i in allworthy}
-
-# MAKE SOMETHING TO SIMPLIFY NODES AND EDGES
+# ITERATE THROUGH ALL DATES
+datetoallworthy=dict()
+# d
+# MAKE BIG ALLWORTHY SET FOR ALL STATIONS, GIVE THOSE ROUTES TO THEM, ON EACH DAY WILL SELECTOVELY CHOOSE ROUTES THAT ARE AVAILABLE
 endstoletter=dict()
+endsset=dict()
 lettertoskipped=dict()
+setlettertoskipped=dict()
+simpletripstotime=dict()
+lettertosymbol=dict()
 counter=1
-for stationid in allworthy:
-    cstation=stations[statidtostationindex[stationid]]
-    # for otherstation in cstation.transfers:
-    #     endstoletter[(stationid,otherstation.statid,counter)]=set()
-    #     counter+=1
-    for otherstation in cstation.neighbors:
-        prev=cstation
-        pointer=otherstation
-        visitid={otherstation.statid}
-        visitedrun={cstation,otherstation}
-        while pointer.statid not in allworthy:
-            prev=pointer
-            pointerset=pointer.neighbors-visitedrun
-            pointerset={i for i in pointerset if (len(i.neighbors-visitedrun)>0 or i.statid in allworthy)}
-            pointer=list(pointerset)[0]
-            visitid.add(pointer.statid)
-            visitedrun.add(pointer)
-        visitid.remove(pointer.statid)
-        endstoletter[(stationid,pointer.statid,counter)]=chr(counter)#change to like a letter or smth?
-        lettertoskipped[chr(counter)]=visitid
-        counter+=1
-with open (system+' simplified nodes.txt','w',encoding='utf-8')as f:
-    f.write('\n'.join([str((stoptoname[i[0]],stoptoname[i[1]],i[2]))+'\t'+endstoletter[i]+'\t'+str({stoptoname[j] for j in lettertoskipped[endstoletter[i]]}) for i in endstoletter]))
+servicetoallworthy=dict()
+servicetonodes=dict()
+datetonodes=dict()
+for date in datetrips:
+    if datetoservices[date] not in servicetoallworthy:  
+        allworthy=set() # set of station ids which correspond to stations that are worthy of stopping at
+        print(date)
+        if len(datetrips[date])>0:
+            for i in range(NUMBEROFSTATIONS):
+                stationinquestion=stations[i]
+                # print(stationinquestion.endofroute,datetrips[date])
+                if len(stationinquestion.endofroute&datetrips[date])>0:
+                    allworthy.add(statids[i])
+                elif len({j for j in stationinquestion.neighbors if len(stationinquestion.neighbortotrips[j.statid]&datetrips[date])>0})>2:
+                    allworthy.add(statids[i])
+                elif len(stationinquestion.transfers)>0:
+                    allworthy.add(statids[i])
+            servicetoallworthy[datetoservices[date]]=allworthy
+            datetoallworthy[date]=allworthy
+            datetonodes[date]=set()
+            servicetonodes[datetoservices[date]]=set()
+        # (newstation.endofroute and len(newstation.neighbors)>1) or ((not newstation.endofroute) and len(newstation.neighbors)>2) or (len(newstation.transfers)>0)
+        # allworthychr={statidtochr[i] for i in allworthy}
+
+        # MAKE SOMETHING TO SIMPLIFY NODES AND EDGES
+
+        # MAKE GLOBAL ROUTE TO CHR THING OR SMTH - CHECKS IF ROUTE IS ALREADY IN THERE AND IF NOT ADDS IT IN
+        
+            for stationid in allworthy:
+                cstation=stations[statidtostationindex[stationid]]
+                # for otherstation in cstation.transfers:
+                #     endstoletter[(stationid,otherstation.statid,counter)]=''
+                #     counter+=1
+                for otherstation in cstation.neighbors:
+                    if len(cstation.neighbortotrips[otherstation.statid]&datetrips[date])>0:
+                        prev=cstation
+                        pointer=otherstation
+                        visitid=[otherstation.statid]
+                        visitedrun={cstation,otherstation}
+                        while pointer.statid not in allworthy:
+                            pointerset=pointer.neighbors-visitedrun
+                            pointerset={i for i in pointerset if len(pointer.neighbortotrips[i.statid]&prev.neighbortotrips[pointer.statid])>0}
+
+
+                            pointerset={i for i in pointerset if len(pointer.neighbortotrips[i.statid]&prev.neighbortotrips[pointer.statid])>0 and len(pointer.neighbortotrips[i.statid]&datetrips[date])>0}
+                            prev=pointer
+
+                            # pointerset={i for i in pointerset if (len(i.neighbors-visitedrun)>0 or i.statid in allworthy)}
+                            pointer=list(pointerset)[0]
+
+                            visitid.append(pointer.statid)
+                            visitedrun.add(pointer)
+                        visitid.remove(pointer.statid)
+                        symbols=''.join([statidtochr[i] for i in visitid])
+
+                        g=False
+                        if (stationid,pointer.statid) in endsset:
+                            for b in endsset[(stationid,pointer.statid)]:
+                                if lettertoskipped[lettertosymbol[endstoletter[b]]]==visitid:
+                                    servicetonodes[datetoservices[date]].add(b)
+                                    datetonodes[date].add(b)
+                                    g=True
+                            if not g:
+                                endsset[(stationid,pointer.statid)].add((stationid,pointer.statid,counter))
+                                servicetonodes[datetoservices[date]].add((stationid,pointer.statid,counter))
+                                datetonodes[date].add((stationid,pointer.statid,counter))
+
+                                endstoletter[(stationid,pointer.statid,counter)]=chr(counter)#change to like a letter or smth?
+                                lettertosymbol[chr(counter)]=symbols
+                                temptttd=cstation.tripstotime
+                                tempttta=prev.tripstotime
+                                deptimes={((pointer.statid,counter),i[1]):temptttd[i] for i in temptttd if i[0]==otherstation.statid}
+                                arrtimes={((i[0],counter),i[1]):tempttta[i] for i in tempttta if i[0]==pointer.statid}
+                                newttt=dict()
+                                for i in deptimes:
+                                    if i in arrtimes:
+                                        newttt[i]=(deptimes[i][0],arrtimes[i][1])
+                                simpletripstotime[(stationid,pointer.statid,counter)]=newttt
+                                lettertoskipped[symbols]=visitid
+                                setlettertoskipped[symbols]=set(visitid)
+                                
+                                counter+=1
+                        else:
+                            endsset[(stationid,pointer.statid)]={(stationid,pointer.statid,counter)}
+                            servicetonodes[datetoservices[date]].add((stationid,pointer.statid,counter))
+                            datetonodes[date].add((stationid,pointer.statid,counter))
+
+                            endstoletter[(stationid,pointer.statid,counter)]=chr(counter)#change to like a letter or smth?
+                            lettertosymbol[chr(counter)]=symbols
+                            temptttd=cstation.tripstotime
+                            tempttta=prev.tripstotime
+                            deptimes={((pointer.statid,counter),i[1]):temptttd[i] for i in temptttd if i[0]==otherstation.statid}
+                            arrtimes={((i[0],counter),i[1]):tempttta[i] for i in tempttta if i[0]==pointer.statid}
+                            newttt=dict()
+                            for i in deptimes:
+                                if i in arrtimes:
+                                    newttt[i]=(deptimes[i][0],arrtimes[i][1])
+                            simpletripstotime[(stationid,pointer.statid,counter)]=newttt
+                            lettertoskipped[symbols]=visitid
+                            setlettertoskipped[symbols]=set(visitid)
+
+                            counter+=1
+    else:
+        datetoallworthy[date]=servicetoallworthy[datetoservices[date]]
+        datetonodes[date]=servicetonodes[datetoservices[date]]
+
+with open (system+' datetoallworthy.txt','w',encoding='utf-8')as f:
+    f.write('\n'.join(sorted([' '.join((str(i),str(sorted([stoptoname[j] for j in datetoallworthy[i]])))) for i in datetoallworthy])))
+with open (system+' datetonodes.txt','w',encoding='utf-8')as f:
+    f.write('\n'.join(sorted([' '.join((str(i),str(sorted(datetonodes[i])))) for i in datetonodes])))
+with open (system+' new simplified nodes.txt','w',encoding='utf-8')as f:
+    f.write('\n'.join([str((stoptoname[i[0]],stoptoname[i[1]],i[2]))+'\t'+lettertosymbol[endstoletter[i]]+'\t'+str({stoptoname[j] for j in lettertoskipped[lettertosymbol[endstoletter[i]]]}) for i in endstoletter]))
+with open (system+' new simplified tripstotime.txt','w',encoding='utf-8')as f:
+    f.write(str(simpletripstotime))
 endsworthykeys={j:{i for i in endstoletter if i[0]==j} for j in allworthy}
-print(len(allworthy))
+# print(len(allworthy))
 print(len(set(i[0] for i in endstoletter)))
 print(len(set(i[1] for i in endstoletter)))
 print(counter-1)
+print(rtrtrt.perf_counter()-cingcingcing)
 #now, let's build the thing:
 # for i in allworthy:
 #     stat=stations[statidtostationindex[i]]
@@ -398,46 +491,44 @@ for n,i in enumerate(allworthy):
     statidtosimplistationindex[i]=n
     currentstation=SimpliStation(ostation)
     for j in endsworthykeys[i]:
-        currentstation.neighbors_id.add(j[1:])
-        direction=lettertoskipped[endstoletter[j]]&ostation.neighbors_id
+        neighborname=j[1:]
+        currentstation.neighbors_id.add(neighborname)
+        direction=setlettertoskipped[lettertosymbol[endstoletter[j]]]&ostation.neighbors_id
         if len(direction)>1:
             print(currentstation.name,stoptoname[j[1]],{stoptoname[k] for k in direction})
         if len(direction)==0:
-            currentstation.neighborstotrips=ostation.neighbortotrips[j[1]]
+            currentstation.neighbortotrips[neighborname]=ostation.neighbortotrips[j[1]]
         else:
-            currentstation.neighborstotrips=ostation.neighbortotrips[list(direction)[0]]
+            currentstation.neighbortotrips[neighborname]=ostation.neighbortotrips[list(direction)[0]]
     simplistations.append(currentstation)
+for i in simpletripstotime:
+    simplistations[statidtosimplistationindex[i[0]]].tripstotime.update(simpletripstotime[i])
 for i in simplistations:
     i.neighbors={(simplistations[statidtosimplistationindex[j[0]]],j[1]) for j in i.neighbors_id}
+    i.transfers={simplistations[statidtosimplistationindex[j]] for j in i.transfers_id}
 ckckck=sorted([(simplistations[i].statid,simplistations[i].name,simplistations[i].neighbors_id,simplistations[i].transfertotime) for i in range(len(simplistations))])
 with open(system+' simplified neighbors.txt','w',encoding='utf-8') as f:
     f.write('\n'.join([' '.join([str(j) for j in i]) for i in ckckck]))
 
+import pickle
+with open(system+' pickled.txt','wb') as f:
+    pickle.dump((datetrips,statidtochr,NUMBEROFSTATIONS,endstoletter,lettertosymbol,simplistations,statids,stoptoname,statidtosimplistationindex),f)
 
 
-
-
-
-def astar_heur(timesincestart, worthyofstopping, prevline, prevworthy, numuni, numstat, stringofthings):
-    g=timesincestart.seconds//60
-    g+=(numstat-numuni)*2
-    h=NUMBEROFSTATIONS-numuni
-    # prevline gets high until end of route, worthyofstopping gets low, prevworthy gets high
-
-    if worthyofstopping:
-        h-=5
-    if prevline:
-        h-=20
-    if prevworthy:
-        h-=7
-    curstat,path=stringofthings[0],stringofthings[1:]
-    j=path.find(curstat)
-    if j>=0:
-        if (set(path[:j])&allworthychr)==set():
-            h+=60000
-        else:
-            h-=(numstat-numuni)
-
+def astar_heur(timesincestart, prevline, numuni, numstat, stringofthings,routestring):
+    # g=(timesincestart.seconds//60)
+    # g+=(numstat-numuni)*(NUMBEROFSTATIONS/(2*NUMBEROFSTATIONS-numstat))
+    # g+=numstat*1.5
+    # h=NUMBEROFSTATIONS-numuni
+    # # prevline gets high until end of route, worthyofstopping gets low, prevworthy gets high
+    # if prevline:
+    #     h-=0
+    # if len(routestring)>1:
+    #     curroute,path=routestring[0],routestring[1:]
+    #     j=path.count(curroute)
+    #     if j>0:
+    #         h+=60000
+    return timesincestart.seconds/numuni
     return g+h
 
 # make set of all stations that are worthy of stopping at
@@ -446,48 +537,62 @@ def astar_heur(timesincestart, worthyofstopping, prevline, prevworthy, numuni, n
 # could make an algorithm that uses only the average (if applicable) of the times between stations in order to find path - basic version
 # advanced version - define start date and time, 
 from heapq import heappush, heappop
+NUMSOLS=1
 def a_star(start,starttime,startday): #for hueristic add thing for if previous station was a transfer station or smth
     startingdatetime=datetime.datetime.combine(startday,starttime)
-    heur=astar_heur(startingdatetime-startingdatetime,start.endofroute or (len(start.transfers)>0),False,False,1,1,statidtochr[start.statid])
-    fringe=[(heur,-1,startingdatetime,0,True,True,not (start.endofroute or (len(start.transfers)>0)),1,statidtochr[start.statid],start,None,tuple())]#'"'+start.statid+'",',start,None)]
+    heur=astar_heur(datetime.timedelta(seconds=0),False,1,1,statidtochr[start.statid],'') 
+    fringe=[(heur,-1,startingdatetime,0,1,statidtochr[start.statid],statidtochr[start.statid],'',start,tuple(),None,(None,))]#'"'+start.statid+'",',start,None)]
+    sols=[]
     while len(fringe)>0:
-        heuristic,numuni,timeofday,numunistatdiff,plnl,prevworthy,worthyofstopping,numstat,stringofthings,curstation,prevline,timetuple=heappop(fringe)
-        # print(heuristic,numunistatdiff,not prevworthy,not plnl,not worthyofstopping,timeofday,curstation.name,[statids[ord(i)] for i in stringofthings])
-        # input()
-        if numuni==-len(stations):
-            return timeofday,numuni,numstat,stringofthings,curstation,prevline,timetuple
+        heuristic,numuni,timeofday,numunistatdiff,numstat,stringofthings,simplisot,routesot,curstation,timetuple,line,linetuple=heappop(fringe)
+        # print(heuristic,numuni,timeofday,numunistatdiff,numstat,curstation.name)
+        if -numuni==NUMBEROFSTATIONS:
+            sols.append((timeofday,numuni,numstat,stringofthings,simplisot,curstation,timetuple,linetuple,routesot))
+            if len(sols)==NUMSOLS:
+                print(' '.join([str(i[2]) for i in sorted(sols)]))
+                return sorted(sols)[0]
         childset=getchildren(curstation,timeofday.time(),timeofday.date())
         # with open('childset.txt','w',encoding='utf-8')as f:
         #     f.write(str((curstation.name,timeofday,childset,[statids[ord(i)] for i in stringofthings],[str(i) for i in timetuple])))
         # input()
-        for nstat,oldtime,newtime,nextline in childset:
+        for nstat,countnumber,oldtime,newtime,nextline in childset:
+            # print(nstat,countnumber,oldtime,newtime,nextline)
             if len(timetuple)==0:
                 timetuple=(oldtime,)
-            nsot=statidtochr[nstat]+stringofthings
-            newstation=stations[statidtostationindex[nstat]]
-            nheur=astar_heur(newtime-startingdatetime,(newstation.endofroute and len(newstation.neighbors)>1) or ((not newstation.endofroute) and len(newstation.neighbors)>2) or (len(newstation.transfers)>0),prevline==nextline or prevline==None or worthyofstopping,worthyofstopping,len(set(nsot)),len(nsot),nsot)
-            heappush(fringe,(nheur,-len(set(nsot)),newtime,-len(set(nsot))+len(nsot),not (prevline==nextline or prevline==None or worthyofstopping),worthyofstopping,not ((newstation.endofroute and len(newstation.neighbors)>1) or ((not newstation.endofroute) and len(newstation.neighbors)>2) or (len(newstation.transfers)>0)),len(nsot),nsot,stations[statidtostationindex[nstat]],nextline,timetuple+(newtime,)))
+            nsot=stringofthings
+            if countnumber>0:
+                nsot=nsot+lettertosymbol[endstoletter[(curstation.statid,nstat,countnumber)]]
+                routesot=routesot+endstoletter[(curstation.statid,nstat,countnumber)]
+            nsot=nsot+statidtochr[nstat]
+            newstation=simplistations[statidtosimplistationindex[nstat]]
+            nnuni=len(set(nsot))
+            nasta=len(nsot)
+            nheur=astar_heur(newtime-startingdatetime,nextline==line,nnuni,nasta,nsot,routesot)
+            # print(nheur,nstat,oldtime,newtime)
+            heappush(fringe,(nheur,-nnuni,newtime,-nnuni+nasta,nasta,nsot,simplisot+statidtochr[nstat],routesot,newstation,timetuple+(newtime,),nextline,linetuple+(nextline,)))
+        # input()
 dingdingding=rtrtrt.perf_counter()
 tim='08:00:00'
 dat='2022-12-18'
 # tim='00:00:00'
 # dat='2018-01-01'
-# dat='2022-10-20'
-import cProfile, pstats, io
-profiler = cProfile.Profile()
-profiler.enable()
+# dat='2022-11-01'
+# import cProfile, pstats, io
+# profiler = cProfile.Profile()
+# profiler.enable()
 startstats={'kochi':'ALVA', 'dc':'STN_N12', 'la': '80201S','nyc':'H11','sf':'place_ANTC','atlanta':'730'}
-try:
-# if True:
-    solution=a_star(stations[statidtostationindex[startstats[system]]],datetime.time.fromisoformat(tim),datetime.date.fromisoformat(dat))
+# try:
+if True:
+    solution=a_star(simplistations[statidtosimplistationindex[startstats[system]]],datetime.time.fromisoformat(tim),datetime.date.fromisoformat(dat))
+    # print(tuple(str(i) for i in solution[6]))
     print('solution found in %s seconds :)'%(rtrtrt.perf_counter()-dingdingding))
-    with open(system+' solution.txt','w',encoding='utf-8') as f:
-        f.write('\n'.join([stoptoname[statids[ord(solution[3][i])]]+' ('+statids[ord(solution[3][i])]+') - '+str(solution[6][i]) for i in range(solution[2])]))
-except:
-    print('error after %s seconds :('%(rtrtrt.perf_counter()-dingdingding))
-s = io.StringIO()
-ps = pstats.Stats(profiler, stream=s).sort_stats('tottime')
-ps.print_stats()
+    with open(system+' solution simplified.txt','w',encoding='utf-8') as f:
+        f.write('\n'.join([stoptoname[statids[ord(solution[4][i])]]+' ('+statids[ord(solution[4][i])]+') - '+str(solution[6][i])+' '+str(solution[7][i]) for i in range(len(solution[4]))]))
+# except:
+#     print('error after %s seconds :('%(rtrtrt.perf_counter()-dingdingding))
+# s = io.StringIO()
+# ps = pstats.Stats(profiler, stream=s).sort_stats('tottime')
+# ps.print_stats()
 
-with open(system+' test.txt', 'w+') as f:
-    f.write(s.getvalue())
+# with open(system+' test.txt', 'w+') as f:
+    # f.write(s.getvalue())
